@@ -1,0 +1,18 @@
+server:
+  port: 8090
+
+emg:
+  behaviordefinition:
+    path: ./behaviordefinition.json
+  invalidCoordinate:
+    hex: "FFFFFFFF"
+    dec: "999.9999999"
+  http:
+    connectTimeoutMs: 60000
+    socketTimeoutMs: 60000
+    maxPerRoute: 200
+    maxTotal: 1000
+logging:
+  level:
+    root: INFO
+
