@@ -69,16 +69,26 @@ public class UrlEncodedParser {
     }
 
     private String decode(final String s) {
+        return decodeWithCharset(s, "UTF-8");
+    }
+
+    private String encode(final String s) {
+        return encodeWithCharset(s, "UTF-8");
+    }
+
+    /* package-private for testing: allow supplying charset to trigger fallback branches */
+    String decodeWithCharset(final String s, final String charset) {
         try {
-            return URLDecoder.decode(s, "UTF-8");
+            return URLDecoder.decode(s, charset);
         } catch (final UnsupportedEncodingException e) {
             return s;
         }
     }
 
-    private String encode(final String s) {
+    /* package-private for testing: allow supplying charset to trigger fallback branches */
+    String encodeWithCharset(final String s, final String charset) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
+            return URLEncoder.encode(s == null ? "" : s, charset);
         } catch (final UnsupportedEncodingException e) {
             return s;
         }

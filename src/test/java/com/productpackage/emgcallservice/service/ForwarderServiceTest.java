@@ -44,19 +44,17 @@ public class ForwarderServiceTest {
     }
 
     @Test
-    @DisplayName("serializeBodyMapForLogging：空 map 返回空字符串（通过反射调用私有方法）")
-    public void testSerializeBodyMapForLogging_emptyMap_returnEmptyString() throws Exception {
-        ForwarderService svc = new ForwarderService(logMessageService);
-        Method m = ForwarderService.class.getDeclaredMethod("serializeBodyMapForLogging", org.springframework.util.MultiValueMap.class);
-        m.setAccessible(true);
-        String out1 = (String) m.invoke(null, (MultiValueMap<String,String>) null);
+    @DisplayName("serializeBodyMapForLogging：空 map 返回空字符串")
+    public void testSerializeBodyMapForLogging_emptyMap_returnEmptyString() {
+        // package-visible static helper can be called directly
+        String out1 = ForwarderService.serializeBodyMapForLogging(null);
         assertThat(out1).isEqualTo("");
         LinkedMultiValueMap<String,String> map = new LinkedMultiValueMap<>();
-        String out2 = (String) m.invoke(null, map);
+        String out2 = ForwarderService.serializeBodyMapForLogging(map);
         assertThat(out2).isEqualTo("");
 
         map.add("a","1");
-        String out3 = (String) m.invoke(null, map);
+        String out3 = ForwarderService.serializeBodyMapForLogging(map);
         assertThat(out3).contains("a=1");
     }
 

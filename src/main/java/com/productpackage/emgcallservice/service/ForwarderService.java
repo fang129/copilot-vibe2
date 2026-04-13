@@ -203,7 +203,7 @@ public class ForwarderService {
         return result;
     }
 
-    private static String serializeBodyMapForLogging(final org.springframework.util.MultiValueMap<String, String> map) {
+    static String serializeBodyMapForLogging(final org.springframework.util.MultiValueMap<String, String> map) {
         if (map == null || map.isEmpty()) {
             return "";
         }
@@ -219,7 +219,7 @@ public class ForwarderService {
         return sb.toString();
     }
 
-    private static String serializeBodyMap(final org.springframework.util.MultiValueMap<String, String> map) {
+    static String serializeBodyMap(final org.springframework.util.MultiValueMap<String, String> map) {
         return serializeBodyMapForLogging(map);
     }
 }

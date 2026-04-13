@@ -106,6 +106,22 @@ public class UrlEncodedParserTest {
         assertThat(out.get(1).value).startsWith("N");
         assertThat(out.get(2).value).startsWith("E");
     }
+
+    @Test
+    @DisplayName("decodeWithCharset：非法 charset 时返回原串")
+    public void testDecodeWithCharset_invalidCharset_returnsInput() {
+        String in = "a%20b";
+        String out = parser.decodeWithCharset(in, "BAD-CHARSET");
+        assertThat(out).isEqualTo(in);
+    }
+
+    @Test
+    @DisplayName("encodeWithCharset：非法 charset 时返回原串")
+    public void testEncodeWithCharset_invalidCharset_returnsInput() {
+        String in = "a b";
+        String out = parser.encodeWithCharset(in, "BAD-CHARSET");
+        assertThat(out).isEqualTo(in);
+    }
 }
 
 
