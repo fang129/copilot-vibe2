@@ -121,6 +121,17 @@ public class RequestProcessorTest {
     }
 
     @Test
+    @DisplayName("transformBodyByPattern：isValidUrlEncoded=true 但 parseToOrderedList 返回空时透传原始二进制")
+    public void testTransformBodyByPattern_validButParsedEmpty_returnsOriginal() {
+        when(urlEncodedParser.isValidUrlEncoded(org.mockito.Mockito.anyString())).thenReturn(true);
+        when(urlEncodedParser.parseToOrderedList(org.mockito.Mockito.anyString())).thenReturn(java.util.Collections.emptyList());
+
+        byte[] raw = "k=1".getBytes(StandardCharsets.UTF_8);
+        byte[] out = processor.transformBodyByPattern("X", raw);
+        assertThat(out).isSameAs(raw);
+    }
+
+    @Test
     @DisplayName("process：缺少 RewriteUrl 时抛 BusinessException 并记录错误")
     public void testProcess_missingRewriteUrl_throwBusinessException() {
         JsonNode behavior = objectMapper.createObjectNode(); // no RewriteUrl
@@ -129,6 +140,19 @@ public class RequestProcessorTest {
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/x");
         byte[] raw = "body".getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> processor.process(req, raw)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("process：空字符串 RewriteUrl 也视为缺失并抛 BusinessException")
+    public void testProcess_emptyRewriteUrl_throwBusinessException() {
+        JsonNode behavior = objectMapper.createObjectNode().put("RewriteUrl", ""); // empty
+        when(behaviorLoader.findBehaviorForPath(org.mockito.Mockito.anyString())).thenReturn(Optional.of(behavior));
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/x2");
+        byte[] raw = "body2".getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> processor.process(req, raw)).isInstanceOf(BusinessException.class);
     }
@@ -154,6 +178,50 @@ public class RequestProcessorTest {
 
         ForwardResult out = processor.process(req, raw);
         assertThat(out).isSameAs(fr);
+    }
+
+    @Test
+    @DisplayName("createForwardedRequest：headerNames 为 null 时仍保证 Content-Type 被设置")
+    public void testCreateForwardedRequest_headerNamesNull_contentTypeOnly() {
+        HttpServletRequest req = org.mockito.Mockito.mock(HttpServletRequest.class);
+        when(req.getHeaderNames()).thenReturn(null);
+        when(req.getQueryString()).thenReturn("qq");
+        when(req.getRequestURI()).thenReturn("/u2");
+
+        JsonNode behavior = objectMapper.createObjectNode().put("Pattern", "D");
+
+        byte[] raw = "b2".getBytes(StandardCharsets.UTF_8);
+        ForwardedRequestData forward = processor.createForwardedRequest(req, raw, behavior);
+        assertThat(forward.getHeaderMap()).containsEntry("Content-Type", com.productpackage.emgcallservice.util.Constants.DEFAULT_CONTENT_TYPE_FORWARD);
+        assertThat(forward.getQueryString()).isEqualTo("qq");
+    }
+
+    @Test
+    @DisplayName("process：Timeout 为非数字时使用默认 timeout，其他字段按实际/默认组合")
+    public void testProcess_timeoutParseFallback_usesDefaults() {
+        // Timeout invalid -> fallback; RetryCount valid -> used; IntervalBetweenRetries missing -> default
+        JsonNode behavior = objectMapper.createObjectNode()
+                .put("RewriteUrl", "/to")
+                .put("Pattern", "D")
+                .put("Timeout", "badint")
+                .put("RetryCount", "3");
+
+        when(behaviorLoader.findBehaviorForPath(org.mockito.Mockito.anyString())).thenReturn(Optional.of(behavior));
+
+        ForwardResult ok = new ForwardResult();
+        ok.setExceptionOccurred(false);
+        when(forwarderService.forward(org.mockito.Mockito.anyString(), org.mockito.Mockito.anyString(), org.mockito.Mockito.any(), org.mockito.Mockito.anyInt(), org.mockito.Mockito.anyInt(), org.mockito.Mockito.anyInt()))
+                .thenReturn(ok);
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/tst");
+        byte[] raw = "x".getBytes(StandardCharsets.UTF_8);
+
+        ForwardResult out = processor.process(req, raw);
+        assertThat(out).isSameAs(ok);
+
+        // verify forwarder called with DEFAULT_TIMEOUT_MS for timeout, RetryCount = 3, DEFAULT_INTERVAL_MS
+        org.mockito.Mockito.verify(forwarderService).forward(org.mockito.ArgumentMatchers.eq("ECDP"), org.mockito.ArgumentMatchers.eq("/to"), org.mockito.ArgumentMatchers.any(ForwardedRequestData.class), org.mockito.ArgumentMatchers.eq(com.productpackage.emgcallservice.util.Constants.DEFAULT_TIMEOUT_MS), org.mockito.ArgumentMatchers.eq(3), org.mockito.ArgumentMatchers.eq(com.productpackage.emgcallservice.util.Constants.DEFAULT_INTERVAL_MS));
     }
 
     @Test

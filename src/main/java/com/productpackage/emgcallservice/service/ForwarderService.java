@@ -74,7 +74,7 @@ public class ForwarderService {
         while (attempts <= retryCount) {
             attempts++;
             result.setAttempts(attempts);
-            try (CloseableHttpClient client = HttpClients.custom().setDefaultRequestConfig(requestConfig).build()) {
+            try (CloseableHttpClient client = createHttpClient(requestConfig)) {
                 // 使用 POST（如需透传 Method，可扩展）
                 final HttpPost post = new HttpPost(rewriteUrl);
                 post.setHeader("Content-Type", Constants.DEFAULT_CONTENT_TYPE_FORWARD);
@@ -136,7 +136,8 @@ public class ForwarderService {
                         final String info = logMessageService.format("log.processSuccess",
                                 Constants.BUSINESS_CODE, status, rewriteUrl);
                         LOGGER.info(info);
-                        return result;
+                        // break out to the common return site to make flow uniform for coverage/tests
+                        break;
                     }
 
                     // 非2xx: 如果还有重试次数，继续；否则记录 E-0301 并返回
@@ -146,7 +147,8 @@ public class ForwarderService {
                         final String errMsg = logMessageService.format("log.apiCallFailedResponseNon200",
                                 Constants.BUSINESS_CODE, downstreamName, rewriteUrl, paramBase64, headerStr, respBase64);
                         LOGGER.error(errMsg);
-                        return result;
+                        // break to common return site
+                        break;
                     }
                     // 否则继续下一次尝试
                 }
@@ -173,12 +175,13 @@ public class ForwarderService {
                     LOGGER.error(exceeded, ex);
                     result.setExceptionOccurred(true);
                     result.setStatus(-1);
-                    return result;
+                    // break to common return site
+                    break;
                 }
 
                 // 休眠后重试
                 try {
-                    Thread.sleep(intervalMs);
+                    sleepMillis(intervalMs);
                 } catch (final InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     final String err = logMessageService.format("log.apiCallUnexpectedError",
@@ -201,6 +204,18 @@ public class ForwarderService {
         }
 
         return result;
+    }
+
+    /* package-private hooks added for testability (A1):
+       - createHttpClient: allows tests to inject a mock CloseableHttpClient to simulate exceptions deterministically
+       - sleepMillis: allows tests to override behavior to throw InterruptedException for coverage
+     */
+    CloseableHttpClient createHttpClient(final RequestConfig requestConfig) {
+        return HttpClients.custom().setDefaultRequestConfig(requestConfig).build();
+    }
+
+    void sleepMillis(final long ms) throws InterruptedException {
+        Thread.sleep(ms);
     }
 
     static String serializeBodyMapForLogging(final org.springframework.util.MultiValueMap<String, String> map) {
