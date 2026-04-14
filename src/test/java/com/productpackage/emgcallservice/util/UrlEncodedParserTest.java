@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,6 +122,124 @@ public class UrlEncodedParserTest {
         String in = "a b";
         String out = parser.encodeWithCharset(in, "BAD-CHARSET");
         assertThat(out).isEqualTo(in);
+    }
+
+    @Test
+    @DisplayName("isValidUrlEncoded：包含 '=' 或 '&' 返回 true")
+    public void testIsValidUrlEncoded_containsEqualsOrAmpersand_true() {
+        assertThat(parser.isValidUrlEncoded("a=b")).isTrue();
+        assertThat(parser.isValidUrlEncoded("a&b")).isTrue();
+    }
+
+    @Test
+    @DisplayName("parseToOrderedList：支持百分号解码与重复 key 保序")
+    public void testParseToOrderedList_percentDecoding_and_repeatedKeys() {
+        List<UrlEncodedParser.Pair> list = parser.parseToOrderedList("k%20=hello%2Bworld&k=2");
+        assertThat(list).hasSize(2);
+        assertThat(list.get(0).key).isEqualTo("k ");
+        assertThat(list.get(0).value).isEqualTo("hello+world");
+        assertThat(list.get(1).key).isEqualTo("k");
+        assertThat(list.get(1).value).isEqualTo("2");
+    }
+
+    @Test
+    @DisplayName("serialize：处理 null key 与 null value")
+    public void testSerialize_handlesNullKeyAndNullValue() {
+        List<UrlEncodedParser.Pair> entries = Arrays.asList(
+                new UrlEncodedParser.Pair("a", "1"),
+                new UrlEncodedParser.Pair(null, "v"),
+                new UrlEncodedParser.Pair("k", null)
+        );
+        String s = parser.serialize(entries);
+        assertThat(s).isEqualTo("a=1&=v&k=");
+    }
+
+    @Test
+    @DisplayName("applyCoordinateRules：unparsable P_TYP 与 null/empty entries 场景")
+    public void testApplyCoordinateRules_unparsablePTyp_and_nullEmpty() {
+        List<UrlEncodedParser.Pair> src = Arrays.asList(
+                new UrlEncodedParser.Pair("P_TYP", "notint"),
+                new UrlEncodedParser.Pair("P_LAT1", "N1")
+        );
+        List<UrlEncodedParser.Pair> out = parser.applyCoordinateRules(src, "H", "D");
+        assertThat(out.get(1).value).isEqualTo("ND");
+
+        // null and empty
+        assertThat(parser.applyCoordinateRules(null, "X", "Y")).isNull();
+        assertThat(parser.applyCoordinateRules(Collections.emptyList(), "X", "Y")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("applyCoordinateRules：当经度/纬度值为 null 时也能替换为无效值")
+    public void testApplyCoordinateRules_nullLatValue_replaced() {
+        List<UrlEncodedParser.Pair> src = Arrays.asList(
+                new UrlEncodedParser.Pair("P_TYP", "0"),
+                new UrlEncodedParser.Pair("P_LAT1", null),
+                new UrlEncodedParser.Pair("P_LON1", "")
+        );
+        List<UrlEncodedParser.Pair> out = parser.applyCoordinateRules(src, "HX", "DC");
+        // null -> treated as empty -> replaced with invalidDec (because P_TYP=0 -> dec)
+        assertThat(out.get(1).value).isEqualTo("DC");
+        assertThat(out.get(2).value).isEqualTo("DC");
+    }
+
+    @Test
+    @DisplayName("parseToOrderedList：处理空段以及等号在开头的情形")
+    public void testParseToOrderedList_emptySegment_and_emptyKey() {
+        List<UrlEncodedParser.Pair> l1 = parser.parseToOrderedList("a=1&&b=2&");
+        // has an empty segment between && and trailing empty segment
+        // Expect pairs: a=1, ""="", b=2, ""=""
+        assertThat(l1).hasSize(4);
+        assertThat(l1.get(1).key).isEqualTo("");
+
+        List<UrlEncodedParser.Pair> l2 = parser.parseToOrderedList("=v");
+        assertThat(l2).hasSize(1);
+        assertThat(l2.get(0).key).isEqualTo("");
+        assertThat(l2.get(0).value).isEqualTo("v");
+    }
+
+    @Test
+    @DisplayName("parseToOrderedList：简单非空字符串分支覆盖")
+    public void testParseToOrderedList_simpleNonEmpty() {
+        List<UrlEncodedParser.Pair> l = parser.parseToOrderedList("x=y");
+        assertThat(l).hasSize(1);
+        assertThat(l.get(0).key).isEqualTo("x");
+        assertThat(l.get(0).value).isEqualTo("y");
+    }
+
+    @Test
+    @DisplayName("parseToOrderedList：在同一用例中依次覆盖 null/empty/non-empty 分支")
+    public void testParseToOrderedList_nullEmptyNonEmpty_sameTest() {
+        // call sequentially to ensure both branches of the initial null-check are exercised in same execution
+        assertThat(parser.parseToOrderedList(null)).isEmpty();
+        assertThat(parser.parseToOrderedList("")).isEmpty();
+        assertThat(parser.parseToOrderedList("a=b")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("private helpers isLat/isLon/pTypMatch via reflection for null/non-matching/matching")
+    public void testPrivateHelpers_viaReflection() throws Exception {
+        java.lang.reflect.Method isLat = UrlEncodedParser.class.getDeclaredMethod("isLat", String.class);
+        java.lang.reflect.Method isLon = UrlEncodedParser.class.getDeclaredMethod("isLon", String.class);
+        java.lang.reflect.Method pTyp = UrlEncodedParser.class.getDeclaredMethod("pTypMatch", String.class);
+        isLat.setAccessible(true);
+        isLon.setAccessible(true);
+        pTyp.setAccessible(true);
+
+        // isLat
+        assertThat((Boolean) isLat.invoke(parser, "P_LAT1")).isTrue();
+        assertThat((Boolean) isLat.invoke(parser, "X_LAT")).isFalse();
+        assertThat((Boolean) isLat.invoke(parser, (Object) null)).isFalse();
+
+        // isLon
+        assertThat((Boolean) isLon.invoke(parser, "P_LON2")).isTrue();
+        assertThat((Boolean) isLon.invoke(parser, "LON" )).isFalse();
+        assertThat((Boolean) isLon.invoke(parser, (Object) null)).isFalse();
+
+        // pTypMatch
+        assertThat((Boolean) pTyp.invoke(parser, "P_TYP")).isTrue();
+        assertThat((Boolean) pTyp.invoke(parser, "P_TYPE")).isFalse();
+        assertThat((Boolean) pTyp.invoke(parser, (Object) null)).isFalse();
     }
 }
 

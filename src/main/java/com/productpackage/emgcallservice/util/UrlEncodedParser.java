@@ -48,7 +48,10 @@ public class UrlEncodedParser {
      */
     public List<Pair> parseToOrderedList(final String s) {
         final List<Pair> out = new ArrayList<>();
-        if (s == null || s.isEmpty()) {
+        if (s == null) {
+            return out;
+        }
+        if (s.isEmpty()) {
             return out;
         }
         final String[] parts = s.split("&", -1);
